@@ -1,0 +1,340 @@
+---
+title: "p8105_hw3_jy3360"
+author: "Candice Yu"
+date: "2023-10-05"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo = F}
+library(tidyverse)
+
+# set the size of plots 
+knitr::opts_chunk$set(
+  fig.width = 6,
+  fig.asp = 0.6,
+  out.width = "90%"
+)
+
+# remove the frame and change legend to bottom
+theme_set(theme_minimal() + theme(legend.position = "bottom"))  
+
+# change continuous variables with "viridis" for color and fill 
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+
+# change discrete variables with "viridis" for color and fill 
+scale_colour_discrete = scale_color_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+```
+
+```{r, echo = F}
+bfcolor <- function(x, color) {
+  if (knitr::is_latex_output()) {
+    sprintf("\\textcolor{%s}{\\textbf{%s}}", color, x)
+  } else if (knitr::is_html_output()) {
+    sprintf("<span style='color: %s;'><b>%s</b></span>", color, x)
+  } else x
+}
+```
+
+
+# Problem 1
+##### The goal is to do some exploration of this dataset. To that end, write a short description of the dataset, noting the size and structure of the data, describing some key variables, and giving illstrative examples of observations. Then, do or answer the following (commenting on the results of each):
+```{r}
+library(p8105.datasets)
+data("instacart")
+```
+
+###### 1.1 How many aisles are there, and which aisles are the most items ordered from?
+
+```{r}
+aisles_number <- 
+  instacart %>%
+  group_by(aisle) %>%
+  summarize(count_in_aisle = n()) %>%
+  mutate(rank_of_aisle = min_rank(desc(count_in_aisle))) %>%
+  arrange(rank_of_aisle)
+```
+
+`r bfcolor("Solution 1.1:", "blue")` There are `r length(unique(instacart$aisle))` aisles and `r aisles_number$aisle[which(aisles_number$rank_of_aisle ==1)]` is the aisle with the most items ordered from. 
+
+###### 1.2 Make a plot that shows the number of items ordered in each aisle, limiting this to aisles with more than 10000 items ordered. Arrange aisles sensibly, and organize your plot so others can read it.
+
+```{r}
+instacart %>%
+  group_by(aisle) %>%
+  summarize(count_in_aisle = n()) %>%
+  arrange(count_in_aisle)%>%
+  filter(count_in_aisle > 10000) %>%
+  ggplot(aes(x = reorder(aisle, -count_in_aisle), y = count_in_aisle)) + 
+  geom_bar(stat = "identity", alpha = .75) +
+  labs(                                             
+    title = "Number of Items Ordered in Each Aisle (Aisles >10,000 items)",
+    x = "Aisle",
+    y = "Number of Items Ordered",
+  ) +
+  theme(axis.text.x = element_text(angle = 50, hjust = 1))
+```
+
+
+
+###### 1.3 Make a table showing the three most popular items in each of the aisles “baking ingredients”, “dog food care”, and “packaged vegetables fruits”. Include the number of times each item is ordered in your table.
+
+```{r}
+popular_items <- 
+  instacart %>%
+  filter(aisle %in% c("baking ingredients", "dog food care", "packaged vegetables fruits")) %>%
+  group_by(aisle, product_name) %>%
+  summarise(number_of_time = n()) %>%
+  mutate(rank_of_time = min_rank(desc(number_of_time))) %>%
+  arrange(rank_of_time) %>%
+  filter(rank_of_time == c(1,2,3)) %>%
+  arrange(desc(number_of_time))
+
+popular_items %>%
+  knitr::kable(col.names = c("Aisle", "Product Name", "Order Count", "Rank")) 
+```
+
+###### 1.4 Make a table showing the mean hour of the day at which Pink Lady Apples and Coffee Ice Cream are ordered on each day of the week; format this table for human readers (i.e. produce a 2 x 7 table).
+
+```{r}
+instacart %>%
+  filter(product_name %in% c("Pink Lady Apples", "Coffee Ice Cream")) %>%
+  group_by(product_name, order_dow) %>%
+  summarise(mean_order_hour_of_day = mean(order_hour_of_day)) %>%
+  pivot_wider(
+    names_from = order_dow,
+    values_from = mean_order_hour_of_day
+  ) %>%
+  knitr::kable(digits = 3) 
+```
+
+# Problem 2
+###### First, do some data cleaning:
+- format the data to use appropriate variable names;
+- focus on the “Overall Health” topic
+- include only responses from “Excellent” to “Poor”    
+- organize responses as a factor taking levels ordered from “Poor” to “Excellent”
+
+```{r}
+brfss = brfss_smart2010 %>%
+  janitor::clean_names() %>%
+  filter(topic == "Overall Health") %>%
+  filter(response %in% c("Excellent", "Very good", "Good", "Fair", "Poor" )) %>%
+  mutate(response = factor(response, levels = c("Poor", "Fair", "Good", "Very good", "Excellent")))
+```
+
+###### Using this dataset, do or answer the following (commenting on the results of each):
+
+- In 2002, which states were observed at 7 or more locations? What about in 2010?
+- Construct a dataset that is limited to Excellent responses, and contains, year, state, and a variable that averages the data_value across locations within a state. 
+- Make a “spaghetti” plot of this average value over time within a state (that is, make a plot showing a line for each state across years – the geom_line geometry and group aesthetic will help).
+- Make a two-panel plot showing, for the years 2006, and 2010, distribution of data_value for responses (“Poor” to “Excellent”) among locations in NY State.
+
+```{r}
+# In 2002, which states were observed at 7 or more locations?
+brfss_2002 <- brfss %>%
+  filter(year == 2002) %>%
+  group_by(locationabbr, locationdesc) %>%
+  summarise(rep_location = n()) %>%
+  group_by(locationabbr) %>%
+  summarise(number_of_location = n()) %>%
+  filter(number_of_location >6)
+
+# In 2010, which states were observed at 7 or more locations?
+brfss_2010 <- brfss %>%
+  filter(year == 2010) %>%
+  group_by(locationabbr, locationdesc) %>%
+  summarise(rep_location = n()) %>%
+  group_by(locationabbr) %>%
+  summarise(number_of_location = n()) %>%
+  filter(number_of_location >6)
+
+brfss_2002
+brfss_2010
+```
+
+`r bfcolor("Solution 2.1:", "blue")` 
+
+- In 2002, `r brfss_2002$locationabbr` were observed at 7 or more locations. 
+- In 2010, `r brfss_2010$locationabbr` were observed at 7 or more locations. 
+
+```{r}
+# Construct a dataset that is limited to Excellent responses, and contains, year, state, and a variable that averages the data_value across locations within a state. 
+brfss_mean_data <- brfss %>%
+  filter(response == "Excellent") %>%
+  group_by(year, locationabbr) %>%
+  summarise(mean_data_value = mean(data_value))
+
+# Make a “spaghetti” plot of this average value over time within a state (that is, make a plot showing a line for each state across years – the geom_line geometry and group aesthetic will help).
+brfss_mean_data %>%
+  ggplot(aes(x = year, y = mean_data_value, color = locationabbr)) +
+  geom_line() +
+  labs(x = "Year", 
+       y = "Average Value",
+       title = "Spaghetti Plot of Average Value for Each State Over Time") +
+  theme_minimal()
+```
+
+`r bfcolor("Solution 2.2:", "blue")` 
+
+- We group the data by variables year and state (locationabbr). And then get the average of data_vale across locations within each state. 
+- We can only see the fluctuation but not the trend from the spaghetti plot.
+
+```{r}
+# Make a two-panel plot showing, for the years 2006, and 2010, distribution of data_value for responses (“Poor” to “Excellent”) among locations in NY State.
+
+brfss %>%
+  filter(year %in% c(2006, 2010), locationabbr == "NY") %>%
+  ggplot(aes(x = response, y = data_value, fill = response)) +
+  geom_boxplot(alpha = 0.5) +
+  facet_wrap(~ year) +  # Create two panels for 2006 and 2010
+  labs(x = "Response", 
+       y = "Data Value", 
+       title = "Distribution of Data Value by Response in NY State (2006 and 2010)")
+
+```
+
+`r bfcolor("Solution 2.3:", "blue")` 
+
+- The distributions of responses for 2006 and 2010 in NY are similar. 
+- Compared to 2006, there has been a significant increase in the proportion of good responses among locations in NY State in 2010.
+- We can observe that there are an increase in the "Very Good" response and decrease in the "Good" response from 2006 to 2010. 
+
+# Problem 3
+###### Load, tidy, merge, and otherwise organize the data sets. 
+- Your final dataset should include all originally observed variables; 
+- exclude participants less than 21 years of age, and those with missing demographic data; 
+- and encode data with reasonable variable classes (i.e. not numeric, and using factors with the ordering of tables and plots in mind).
+
+```{r}
+demographic <- read_csv("./data/nhanes_covar.csv", skip = 4) %>%
+  janitor::clean_names() %>%
+  filter(age > 20) %>%
+  drop_na() %>%
+  mutate(sex = factor(recode(sex, "1" = "male", "2" = "female")), 
+         education = recode(education, `1` = "Less than high school", 
+                            `2` =  "High school equivalent",
+                            `3`  = "More than high school"),
+         education = factor(education, levels = c("Less than high school", 
+                                                  "High school equivalent", 
+                                                  "More than high school")))
+
+accelerometer <- read_csv("./data/nhanes_accel.csv")%>%
+  janitor::clean_names() %>%
+  pivot_longer(
+    min1:min1440,
+    names_to = "min",
+    names_prefix = "min",
+    values_to = "mims"
+  )
+
+mims <- left_join(demographic, accelerometer)
+str(mims)
+```
+
+###### Analysis of sex and education variables 
+- Produce a reader-friendly table for the number of men and women in each education category, and 
+- create a visualization of the age distributions for men and women in each education category. 
+- Comment on these items.
+```{r}
+# Produce a reader-friendly table for the number of men and women in each education category
+demographic %>%
+  group_by(sex, education) %>%
+  summarise(num_of_pp = n()) %>%
+  pivot_wider(
+    names_from = education,
+    values_from = num_of_pp
+  ) %>%
+  knitr::kable()  
+
+```
+
+`r bfcolor("Solution 3.1:", "blue")` 
+
+- We can see from the table that the educational distributions are similar for female and male. 
+- In the high school equivalent education category, there are more male (35) participants than female (23). 
+- In the more than high school education category, there are slightly more female (59) participants than male (56).  
+
+```{r}
+# create a visualization of the age distributions for men and women in each education category
+demographic %>%
+  ggplot(aes(x = sex, y = age, fill = sex)) +
+  geom_boxplot(alpha = 0.5)+
+  facet_grid(.~ education) +
+  labs(                                          
+    title = "Age Distributions for Men and Women in Each Education Category",
+    x = "Educational Level",
+    y = "Age"
+  ) 
+```
+`r bfcolor("Solution 3.2:", "blue")` 
+
+- We can see that the age distributions of education levels of less than high school and more than high school between female and male are very similar . 
+- For education levels of high school or equivalent, the overall age of female is greater than that of male. 
+
+###### Traditional analyses of accelerometer data focus on the total activity over the day. 
+- Using your tidied dataset, aggregate across minutes to create a total activity variable for each participant. 
+- Plot these total activities (y-axis) against age (x-axis); 
+- your plot should compare men to women and have separate panels for each education level. 
+- Include a trend line or a smooth to illustrate differences. 
+- Comment on your plot.
+
+```{r}
+# Using your tidied dataset, aggregate across minutes to create a total activity variable for each participant.
+mims_aggregated <- mims %>%
+  group_by(seqn) %>%
+  summarise(activity = sum(mims)) %>%
+  left_join(demographic)
+
+# Plot these total activities (y-axis) against age (x-axis); 
+mims_aggregated %>%
+  ggplot(aes(x = age, y = activity, color = sex)) +   
+  geom_point() +
+  facet_grid(.~ education) +                                     
+  geom_smooth(se = FALSE) +
+  labs(                                          
+    title = "Total Activities against Age for each Education Level",
+    x = "Age",
+    y = "Total Activity"
+  ) 
+```
+`r bfcolor("Solution 3.3:", "blue")` 
+
+- We can see from the plot that there are generally decreasing trends in all education levels for both female and male, which indicates that people’s total activity generally decrease as they become older. 
+- Although the curve is generally decreasing, there are some rebounds for each of the educational level: the rebound happens at about age 50 to 60 for less than high school, age 30 to 40 for high school or equivalent, and age 40 to 60 for more than high school. 
+- For education level less than high school, the total activity level of male is generally higher than that of female For education level high school equivalent and more than high school, the total activity level of female is generally higher than that of male. 
+
+###### Accelerometer data allows the inspection activity over the course of the day. 
+- Make a three-panel plot that shows the 24-hour activity time courses for each education level and use color to indicate sex. 
+- Describe in words any patterns or conclusions you can make based on this graph; 
+- including smooth trends may help identify differences.
+
+```{r}
+mims %>%
+  ggplot(aes(x = as.integer(min), y = mims, color = sex)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(se = FALSE) +
+  labs(
+    title = "24-hour mims for each Education Level",
+    x = "Time (hour)",
+    y = "mims"
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 1440, by = 180),
+    labels = as.character(seq(0, 24, by = 3))
+    ) +
+  facet_grid(.~ education)
+
+```
+
+`r bfcolor("Solution 3.3:", "blue")` 
+
+- We can see from the distributions for female and male are similar. We can also see that the smooth lines for different educational levels are similar. So we can conclude that there is no significantly close relationship among the activity level, sex, and educational level. 
+- The activity level remains in high value during the daytime from 9 to 21. The activity level starts to decrease in the evening from 21 to 6. The activity level starts to go up in the morning from 6 to 9. 
